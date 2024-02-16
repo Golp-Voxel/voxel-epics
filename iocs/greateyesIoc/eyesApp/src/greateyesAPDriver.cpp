@@ -39,6 +39,11 @@
 #define NUM_DIVISIONS 10     /* Number of scope divisions in X and Y */
 #define MIN_UPDATE_TIME 1.0 /* Minimum update time, to prevent CPU saturation */
 
+//It can take up to 15 seconds until the system provides the device.
+#define CAMERA_CONNECT_RETRIES 15
+#define MIN_EXPOSURE_TIME 1       /* Minimum Exposure time in ms.*/
+#define MAX_EXPOSURE_TIME 2000000 /* Maximum Exposure time in ms.*/
+
 /* minimal/maximal possible value for parameter temperature
 * of the function TemperatureControl_SetTemperature() 
 * TODO: Check this
@@ -49,8 +54,9 @@
 #define MAX_ENUM_STRING_SIZE 20
 static int allVoltsPerDivSelections[NUM_VERT_SELECTIONS]={1,2,5,10};
 
+static const int cameraAddr = 0;
 static const char *driverName="greateyesAPDriver";
-void gsimTask(void *drvPvt);
+void gsensorsTask(void *drvPvt);
 
 
 /** Constructor for the greateyesAPDriver class.
@@ -62,7 +68,7 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
                     1, /* maxAddr */
                     asynInt32Mask | asynFloat64Mask | asynFloat64ArrayMask | asynEnumMask | asynDrvUserMask, /* Interface mask */
                     asynInt32Mask | asynFloat64Mask | asynFloat64ArrayMask | asynEnumMask,  /* Interrupt mask */
-                    0, /* asynFlags.  This driver does not block and it is not multi-device, so flag is 0 */
+                    0, /*  asynFlags. 0:  This driver does not block and it is not multi-device, so flag is 0 */
                     1, /* Autoconnect */
                     0, /* Default priority */
                     0) /* Default stack size*/
@@ -74,7 +80,7 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
 //	int connectionType = connectionType_Ethernet;
 	int maxPoints = 100;
 
-	int lastStatus = 0;
+
 	//char ip[] = "192.168.1.234";
 	char * ip = const_cast<char *>(ipAddress);
 	//const char * ip  = ipAddress;
@@ -84,12 +90,12 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
 	char model[64];
 	char* modelPtr = model;
 	
-	const int cameraAddr = 0;
 	int bytesPerPixel = 2;
 
 	//set connectionType
 	//std::cout << "Hello Setup!\n";
 	numberOfCamsConnected = 0;
+	lastStatus = 0;
 	if (SetupCameraInterface(connectionType, ip, lastStatus, cameraAddr)==false)
 	{
 		printf("%s:%s: SetupCameraInterface failure\n", driverName, functionName);
@@ -116,23 +122,22 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
     createParam(P_VertGainSelectString,     asynParamInt32,         &P_VertGainSelect);
     createParam(P_VoltsPerDivString,        asynParamFloat64,       &P_VoltsPerDiv);
     createParam(P_VoltsPerDivSelectString,  asynParamInt32,         &P_VoltsPerDivSelect);
-    createParam(P_VoltOffsetString,         asynParamFloat64,       &P_VoltOffset);
+    //createParam(P_VoltOffsetString,         asynParamFloat64,       &P_VoltOffset);
     //createParam(P_TriggerDelayString,       asynParamFloat64,       &P_TriggerDelay);
     //createParam(P_NoiseAmplitudeString,     asynParamFloat64,       &P_NoiseAmplitude);
     createParam(P_UpdateTimeString,         asynParamFloat64,       &P_UpdateTime);
     createParam(P_WaveformString,           asynParamFloat64Array,  &P_Waveform);
+	
+//calllib('greateyes', 'SetExposure', 100, statusMSGPtr, addr); %exposure in mili-seconds.
 
     createParam(P_TimeBaseString,           asynParamFloat64Array,  &P_TimeBase);
-	/*
-    createParam(P_MinValueString,           asynParamFloat64,       &P_MinValue);
-    createParam(P_MaxValueString,           asynParamFloat64,       &P_MaxValue);
-    createParam(P_MeanValueString,          asynParamFloat64,       &P_MeanValue);
-*/
-    
+   
 	createParam(P_RunTempControlString,  asynParamInt32,            &P_RunTempControl);
 
 	createParam(P_GetCCDTemperatureString,     asynParamFloat64,    &P_GetCCDTemperature);
     createParam(P_GetTECTemperatureString,     asynParamInt32,      &P_GetTECTemperature);
+	
+    createParam(P_SetExposureString,     asynParamInt32,      &P_SetExposure);
 	
     for (i=0; i<NUM_VERT_SELECTIONS; i++) {
         // Compute vertical volts per division in mV
@@ -147,7 +152,7 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
     setIntegerParam(P_VertGainSelect,    10);
     setVertGain();
     setDoubleParam (P_VoltsPerDiv,       1.0);
-    setDoubleParam (P_VoltOffset,        0.0);
+    //setDoubleParam (P_VoltOffset,        0.0);
     //setDoubleParam (P_TriggerDelay,      0.0);
     setDoubleParam (P_TimePerDiv,        0.01);
     setDoubleParam (P_UpdateTime,        1.0);
@@ -158,6 +163,7 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
 
     setDoubleParam (P_GetCCDTemperature,    3.0);
     setIntegerParam (P_GetTECTemperature,    3);
+
 	
 	//ethernet: connect to single camera server (camera with ethernet interface)
 	if (connectionType == connectionType_Ethernet)
@@ -174,7 +180,7 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
 	{
 		printf("numberOfCamsConnected ");
 		int j=0;
-		for (int i = 0; i < 3; i++) { // 15
+		for (int i = 0; i < CAMERA_CONNECT_RETRIES; i++) {
 			numberOfCamsConnected = GetNumberOfConnectedCams();
 			j++;
 			if (numberOfCamsConnected != 0)
@@ -189,7 +195,7 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
 			//no camera found
 			printf("%s:%s: GetNumberOfConnectedCams failure\n", driverName, functionName);
 			setIntegerParam(P_Run, 0);
-			//return;
+			return;
 
 		}
 	}
@@ -199,19 +205,20 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
 	if (ConnectCamera(modelID, modelPtr, lastStatus, cameraAddr) == false)
 	{
 		//on error - connecting to camera
+		//Call this DisconnectCamera before calling DisconnectCameraServer().
+		DisconnectCamera(lastStatus, cameraAddr);
 		if (connectionType == connectionType_Ethernet)
 		{
 			DisconnectCameraServer(cameraAddr);
 		}
 		printf("%s:%s: ConnectCamera failure. lastStatus %d\n", driverName, functionName, lastStatus);
 		setIntegerParam(P_Run, 0);
-		//return;
+		return;
 	}
 	//initialize camera
 	if (InitCamera(lastStatus, cameraAddr) == false)
 	{
 		//on error camera init
-		//DisconnectCamera(cameraAddr);
 		DisconnectCamera(lastStatus, cameraAddr);
 		if (connectionType == connectionType_Ethernet)
 		{
@@ -219,15 +226,20 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
 		}
 		printf("%s:%s: InitCamera failure. lastStatus %d\n", driverName, functionName, lastStatus);
 		setIntegerParam(P_Run, 0);
-			//		return;
+		return;
 
 	}
+
+	if(SetExposure(100, lastStatus, cameraAddr))
+		setIntegerParam (P_SetExposure, 100);
+	else
+		setIntegerParam (P_SetExposure, MIN_EXPOSURE_TIME);
 
     /* Create the thread that computes the waveforms in the background */
     status = (asynStatus)(epicsThreadCreate("greateyesAPDriverTask",
                           epicsThreadPriorityMedium,
                           epicsThreadGetStackSize(epicsThreadStackMedium),
-                          (EPICSTHREADFUNC)::gsimTask,
+                          (EPICSTHREADFUNC)::gsensorsTask,
                           this) == NULL);
     if (status) {
         printf("%s:%s: epicsThreadCreate failure\n", driverName, functionName);
@@ -235,13 +247,28 @@ greateyesAPDriver::greateyesAPDriver(const char *portName, int connectionType, c
     }
 }
 
+/*
+asynStatus greateyesAPDriver::connect(asynUser *pasynUser)
+{
+	//asynStatus status = asynSuccess;
+    printf("%s: APD connect \n", driverName);
+	return asynPortDriver::connect(pasynUser);
+	//return asynError;
+}
 
-
-void gsimTask(void *drvPvt)
+asynStatus greateyesAPDriver::disconnect(asynUser *pasynUser)
+{
+	asynStatus status = asynSuccess;
+    printf("%s: disconnect \n", driverName);
+	// asynError
+	return status;
+}
+*/
+void gsensorsTask(void *drvPvt)
 {
     greateyesAPDriver *pPvt = (greateyesAPDriver *)drvPvt;
 
-    pPvt->gsimTask();
+    pPvt->gsensorsTask();
 }
 
 /** Simulation task that runs as a separate thread.  When the P_Run parameter is set to 1
@@ -249,15 +276,15 @@ void gsimTask(void *drvPvt)
   * noise, and displays it on
   * a simulated scope.  It computes waveforms for the X (time) and Y (volt) axes, and computes
   * statistics about the waveform. */
-void greateyesAPDriver::gsimTask(void)
+void greateyesAPDriver::gsensorsTask(void)
 {
     /* This thread computes the waveform and does callbacks with it */
 
-    double timePerDiv, voltsPerDiv, voltOffset;
-    double updateTime, minValue, maxValue, meanValue;
-	double getCCDTemperature;
-	//epicsInt32 getTECTemperature;
-
+    double timePerDiv, voltsPerDiv;
+    double updateTime;
+	
+	double sensorTemperature;
+	epicsInt32 backsideTemperature, temp;
 	
     double time, timeStep;
     double yScale;
@@ -283,35 +310,45 @@ void greateyesAPDriver::gsimTask(void)
         getIntegerParam(P_MaxPoints,        &maxPoints);
         getDoubleParam (P_TimePerDiv,       &timePerDiv);
         getDoubleParam (P_VoltsPerDiv,      &voltsPerDiv);
-        getDoubleParam (P_VoltOffset,       &voltOffset);
-        //getDoubleParam (P_TriggerDelay,     &triggerDelay);
-        //getDoubleParam (P_NoiseAmplitude,   &noiseAmplitude);
+
         time = 0; //triggerDelay;
         timeStep = timePerDiv * NUM_DIVISIONS / maxPoints;
-        minValue = 1e6;
-        maxValue = -1e6;
-        meanValue = 0.;
 
         yScale = 1.0 / voltsPerDiv;
         for (i=0; i<maxPoints; i++) {
             //noise = noiseAmplitude * (rand()/(double)RAND_MAX - 0.5);
             pData_[i] = AMPLITUDE * (sin(time*FREQUENCY*2*pi));
             /* Compute statistics before doing the yOffset and yScale */
-            if (pData_[i] < minValue) minValue = pData_[i];
-            if (pData_[i] > maxValue) maxValue = pData_[i];
-            meanValue += pData_[i];
-            pData_[i] = NUM_DIVISIONS/2 + yScale * (voltOffset + pData_[i]);
+ 
+            pData_[i] = NUM_DIVISIONS/2 + yScale * ( pData_[i]);
             time += timeStep;
         }
         updateTimeStamp();
-        meanValue = meanValue/maxPoints;
+        //meanValue = meanValue/maxPoints;
         //setDoubleParam(P_MinValue, minValue);
         //setDoubleParam(P_MaxValue, maxValue);
         //setDoubleParam(P_MeanValue, meanValue);
 		
-		getDoubleParam(P_GetCCDTemperature, &getCCDTemperature);		
-		getCCDTemperature += 1;
-        setDoubleParam(P_GetCCDTemperature, getCCDTemperature);		
+		//getDoubleParam(P_GetCCDTemperature, &sensorTemperature);		
+		//sensorTemperature += 1;
+        //setDoubleParam(P_GetCCDTemperature, sensorTemperature);	
+		temp = 0;
+		if (TemperatureControl_GetTemperature(0, temp, lastStatus, cameraAddr))
+		{
+			sensorTemperature = temp * 1.0;
+			setDoubleParam(P_GetCCDTemperature, sensorTemperature);
+			printf("P_GetCCDTemperature %d \n", temp);			
+		}
+		else 
+			printf("P_GetCCDTemperature failure \n");			
+			
+
+		backsideTemperature = 0;		
+		if (TemperatureControl_GetTemperature(1, backsideTemperature, lastStatus, cameraAddr))
+		{
+			setIntegerParam(P_GetTECTemperature, backsideTemperature);			
+
+		}
 		
         callParamCallbacks();
         doCallbacksFloat64Array(pData_, maxPoints, P_Waveform, 0);
@@ -361,7 +398,7 @@ asynStatus greateyesAPDriver::readInt32(asynUser *pasynUser, epicsInt32 *value)
 }
 
 /** Called when asyn clients call pasynInt32->write().
-  * This function sends a signal to the gsimTask thread if the value of P_Run has changed.
+  * This function sends a signal to the gsensorsTask thread if the value of P_Run has changed.
   * For all parameters it sets the value in the parameter library and calls any registered callbacks..
   * \param[in] pasynUser pasynUser structure that encodes the reason and address.
   * \param[in] value Value to write. */
@@ -391,10 +428,45 @@ asynStatus greateyesAPDriver::writeInt32(asynUser *pasynUser, epicsInt32 value)
     else if (function == P_TimePerDivSelect) {
         setTimePerDiv();
     }
+    else if (function == P_SetExposure) {
+		//Call this function to set the exposure time in ms for the subsequent measurements
+		if (value < MIN_EXPOSURE_TIME) {
+		asynPrint(pasynUser, ASYN_TRACE_WARNING,
+			"%s:%s: warning, exposure time too small, changed from %d to %u\n",
+			driverName, functionName, value, MIN_EXPOSURE_TIME);
+			value = MIN_EXPOSURE_TIME;
+		}
+		else if (value > MAX_EXPOSURE_TIME) {
+		asynPrint(pasynUser, ASYN_TRACE_WARNING,
+			"%s:%s: warning, exposure time too big, changed from %d to %u\n",
+			driverName, functionName, value, MAX_EXPOSURE_TIME);
+			value = MAX_EXPOSURE_TIME;
+		}
+
+		// exposureTime 1..2,000,000 Exposure time in ms.
+		if(SetExposure(value, lastStatus, cameraAddr))
+			setIntegerParam (P_SetExposure, value);
+    }
     else {
         /* All other parameters just get set in parameter list, no need to
          * act on them here */
     }
+//calllib('greateyes', 'SetShutterTimings', 100, 100, statusMSGPtr, addr);
+//Call this function to open or close the shutter manually, or to automatically
+//open/close the shutter before/after the actual exposure time window.
+
+//Result: true No error has occurred; command successfully.
+//false An error has occurred; use statusMSG to analyse the type
+// and source of the error.
+//Parameters the user must set:
+//state: 0 close shutter
+//1 open shutter
+//2 auto shutter
+//Automatically open and close the shutter before/after the
+//actual exposure time window based on timings defined via
+//a call of SetShutterTimings(). 
+//calllib('greateyes', 'OpenShutter', 2, statusMSGPtr, addr); 
+
 
     /* Do callbacks so higher layers see any changes */
     status = (asynStatus) callParamCallbacks();
@@ -411,7 +483,7 @@ asynStatus greateyesAPDriver::writeInt32(asynUser *pasynUser, epicsInt32 value)
 }
 
 /** Called when asyn clients call pasynFloat64->write().
-  * This function sends a signal to the gsimTask thread if the value of P_UpdateTime has changed.
+  * This function sends a signal to the gsensorsTask thread if the value of P_UpdateTime has changed.
   * For all  parameters it  sets the value in the parameter library and calls any registered callbacks.
   * \param[in] pasynUser pasynUser structure that encodes the reason and address.
   * \param[in] value Value to write. */
@@ -613,13 +685,8 @@ void greateyesAPDriver::setTimePerDiv()
   * \param[out] Possible values of parameter statusMSG.
   * \param[in] addr 0..3 Index of connected devices.
 		This Index begins at addr = 0 for the first device.
-*/
-bool greateyesAPDriver::CCD_TEC_GetTemperature(epicsInt32 thermistor,
-epicsInt32 &temperature, epicsInt32 &statusMSG, epicsInt32 addr)
-{
-    return TemperatureControl_GetTemperature(thermistor, temperature, statusMSG, addr);
-}
 
+*/
 
 /* Configuration routine.  Called directly, or from the iocsh function below */
 

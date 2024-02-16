@@ -16,7 +16,6 @@
 
 #define NUM_VERT_SELECTIONS 4
 
-
 /* These are the drvInfo strings that are used to identify the parameters.
  * They are used by asyn clients, including standard asyn device support */
 #define P_RunString                "SCOPE_RUN"                  /* asynInt32,    r/w */
@@ -27,17 +26,14 @@
 #define P_VertGainSelectString     "SCOPE_VERT_GAIN_SELECT"     /* asynInt32,    r/w */
 #define P_VoltsPerDivString        "SCOPE_VOLTS_PER_DIV"        /* asynFloat64,  r/w */
 #define P_VoltsPerDivSelectString  "SCOPE_VOLTS_PER_DIV_SELECT" /* asynInt32,    r/w */
-#define P_VoltOffsetString         "SCOPE_VOLT_OFFSET"          /* asynFloat64,  r/w */
 #define P_UpdateTimeString         "SCOPE_UPDATE_TIME"          /* asynFloat64,  r/w */
 #define P_WaveformString           "SCOPE_WAVEFORM"             /* asynFloat64Array,  r/o */
 #define P_TimeBaseString           "SCOPE_TIME_BASE"            /* asynFloat64Array,  r/o */
-//#define P_MinValueString           "SCOPE_MIN_VALUE"            /* asynFloat64,  r/o */
-//#define P_MaxValueString           "SCOPE_MAX_VALUE"            /* asynFloat64,  r/o */
-//#define P_MeanValueString          "SCOPE_MEAN_VALUE"           /* asynFloat64,  r/o */
 
-#define P_GetCCDTemperatureString     "GET_CCD_TEMPERATURE"     /* asynFloat64,  r/o */
-#define P_GetTECTemperatureString     "GET_TEC_TEMPERATURE"     /* asynFloat64,  r/o */
-#define P_RunTempControlString        "RUN_TEMP_CONTROL"        /* asynInt32,    r/w */
+#define P_GetCCDTemperatureString  "GET_CCD_TEMPERATURE"     /* asynFloat64,  r/o */
+#define P_GetTECTemperatureString  "GET_TEC_TEMPERATURE"     /* asynFloat64,  r/o */
+#define P_RunTempControlString     "RUN_TEMP_CONTROL"        /* asynInt32,    r/w */
+#define P_SetExposureString        "EXPOSURE_TIME"           /* asynInt32,    r/w */
 
 
 /** Class that demonstrates the use of the asynPortDriver base class to greatly simplify the task
@@ -59,9 +55,11 @@ public:
                                         size_t nElements, size_t *nIn);
     virtual asynStatus readEnum(asynUser *pasynUser, char *strings[], int values[], int severities[],
                                 size_t nElements, size_t *nIn);
-
+   // virtual asynStatus connect(asynUser *pasynUser);
+   // virtual asynStatus disconnect(asynUser *pasynUser);
+	
     /* These are the methods that are new to this class */
-    void gsimTask(void);
+    void gsensorsTask(void);
 
 protected:
     /** Values used for pasynUser->reason, and indexes into the parameter library. */
@@ -73,7 +71,7 @@ protected:
     int P_VertGainSelect;
     int P_VoltsPerDiv;
     int P_VoltsPerDivSelect;
-    int P_VoltOffset;
+    //int P_VoltOffset;
    
     int P_UpdateTime;
     int P_Waveform;
@@ -86,6 +84,9 @@ protected:
 	int P_RunTempControl;
 	int P_GetCCDTemperature;
 	int P_GetTECTemperature;
+	
+	int P_SetExposure;
+
 
 private:
     /* Our data */
@@ -104,7 +105,8 @@ private:
 	
 	// GreatEyes
 	//int connectionType;
+	int lastStatus;
 	int numberOfCamsConnected;
-	bool CCD_TEC_GetTemperature(epicsInt32 thermistor,
-			epicsInt32 &temperature, epicsInt32 &statusMSG, epicsInt32 addr);
+	//bool CCD_TEC_GetTemperature(epicsInt32 thermistor,
+	//		epicsInt32 &temperature, epicsInt32 &statusMSG, epicsInt32 addr);
 };

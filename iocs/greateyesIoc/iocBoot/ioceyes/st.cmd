@@ -15,7 +15,6 @@ eyes_registerRecordDeviceDriver pdbbase
 #dbLoadTemplate "db/user.substitutions"
 #dbLoadRecords "db/eyesVersion.db", "user=Voxel"
 
-
 #dbLoadRecords "db/dbExample1.db", "user=Voxel"
 # Turn on asynTraceFlow and asynTraceError for global trace, i.e. no connected asynUser.
 #asynSetTraceMask("", 0, 17)
@@ -23,14 +22,14 @@ eyes_registerRecordDeviceDriver pdbbase
 #connectionType_USB = 0
 #connectionType_Ethernet = 3
 greateyesAPDriverConfigure("testDLL", 0, "192.168.1.234")
+asynSetTraceIOMask(testDLL, 0, ESCAPE)
+asynSetTraceMask(testDLL, 0, ERROR|DRIVER)
 
 dbLoadRecords("db/greateyes.db","P=Voxel:,R=great:,PORT=testDLL,ADDR=0,TIMEOUT=1,NPOINTS=1000")
 dbLoadRecords("${ASYN}/db/asynRecord.db","P=Voxel:,R=asyn1,PORT=testDLL,ADDR=0,OMAX=80,IMAX=80")
 #asynSetTraceMask("testDLL",0,0xff)
-asynSetTraceIOMask("testDLL",0,0x2)
+#asynSetTraceIOMask("testDLL",0,0x2)
 
-#- Set this to see messages from mySub
-#var mySubDebug 1
 
 #- Run this to trace the stages of iocInit
 #traceIocInit
