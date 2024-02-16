@@ -1,0 +1,23 @@
+# Epics stuff
+export EPICS_ROOT=${HOME}/EPICS
+export EPICS_BASE=${EPICS_ROOT}/epics-base
+export EPICS_HOST_ARCH=`${EPICS_BASE}/startup/EpicsHostArch`
+export EPICS_BASE_BIN=${EPICS_BASE}/bin/${EPICS_HOST_ARCH}
+export EPICS_BASE_LIB=${EPICS_BASE}/lib/${EPICS_HOST_ARCH}
+export EPICS_EXT=${EPICS_ROOT}/extensions
+export EPICS_EXT_BIN=${EPICS_EXT}/bin/${EPICS_HOST_ARCH}
+export EPICS_EXT_LIB=${EPICS_EXT}/lib/${EPICS_HOST_ARCH}
+if [ "" = "${LD_LIBRARY_PATH}" ]; then
+        export LD_LIBRARY_PATH=${EPICS_BASE_LIB}:${EPICS_EXT_LIB}
+    else
+        export LD_LIBRARY_PATH=${EPICS_BASE_LIB}:${EPICS_EXT_LIB}:${LD_LIBRARY_PATH}
+fi
+export PATH=${EPICS_BASE_BIN}:${PATH}
+
+#export EPICS_CA_ADDR_LIST="localhost 192.168.0.60 192.168.0.21 192.168.0.22 192.168.0.99"
+#export EPICS_CA_ADDR_LIST="192.168.0.60 192.168.0.21 192.168.0.22 192.168.0.99"
+#export EPICS_CA_ADDR_LIST="localhost"
+export EPICS_CA_ADDR_LIST="localhost 192.168.1.5"
+export EPICS_CA_AUTO_ADDR_LIST="NO"
+
+export EPICS_MBA_BASE=$EPICS_BASE
